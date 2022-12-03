@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:just_audio_example/common.dart';
+import 'package:just_audio_example/youtube.dart';
+import 'package:just_audio_example/youtube_list.dart';
 import 'package:rxdart/rxdart.dart';
 
 Future<void> main() async {
@@ -12,7 +14,23 @@ Future<void> main() async {
     androidNotificationChannelName: 'Audio playback',
     androidNotificationOngoing: true,
   );
-  runApp(const MyApp());
+  runApp(const MyAppInit());
+}
+
+class MyAppInit extends StatelessWidget {
+  const MyAppInit({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Flutter Demo',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: const MyApp(),
+    );
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -22,9 +40,10 @@ class MyApp extends StatefulWidget {
   MyAppState createState() => MyAppState();
 }
 
-class MyAppState extends State<MyApp> {
+class MyAppState extends State<MyApp> with TickerProviderStateMixin {
   static int _nextMediaId = 0;
   late AudioPlayer _player;
+  late AnimationController _controller;
   final _playlist = ConcatenatingAudioSource(children: [
     ClippingAudioSource(
       child: AudioSource.uri(Uri.parse(
@@ -43,6 +62,11 @@ class MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      lowerBound: 0.5,
+      duration: const Duration(seconds: 3),
+    )..repeat();
     _player = AudioPlayer();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.black,
@@ -69,6 +93,7 @@ class MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    _controller.dispose();
     _player.dispose();
     super.dispose();
   }
@@ -83,171 +108,79 @@ class MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        body: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Expanded(
-                child: StreamBuilder<IcyMetadata?>(
-                  stream: _player.icyMetadataStream,
-                  builder: (context, snapshot) {
-                    
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Center(
-                                child:
-                                    Image.network('https://e-cdn-images.dzcdn.net/images/cover/4358c657ca6a2f3e314b5d569680dee9/264x264-000000-80-0-0.jpg')),
-                          ),
-                        ),
-                        Text("Album Iglesia",
-                            style: Theme.of(context).textTheme.headline6),
-                        const Text('Titulo de la Radio'),
-                      ],
-                    );
-                  },
-                ),
+    return Scaffold(
+      appBar: AppBar(title: Text("title")),
+      drawer: Drawer(
+        child: ListView(
+          
+          padding: EdgeInsets.zero,
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(
+                color: Colors.blue,
               ),
-              ControlButtons(_player),
-              StreamBuilder<PositionData>(
-                stream: _positionDataStream,
-                builder: (context, snapshot) {
-                  final positionData = snapshot.data;
-                  return SeekBar(
-                    duration: positionData?.duration ?? Duration.zero,
-                    position: positionData?.position ?? Duration.zero,
-                    bufferedPosition:
-                        positionData?.bufferedPosition ?? Duration.zero,
-                    onChangeEnd: (newPosition) {
-                      _player.seek(newPosition);
-                    },
-                  );
-                },
-              ),
-              const SizedBox(height: 8.0),
-              Row(
-                children: [
-                  StreamBuilder<LoopMode>(
-                    stream: _player.loopModeStream,
-                    builder: (context, snapshot) {
-                      final loopMode = snapshot.data ?? LoopMode.off;
-                      const icons = [
-                        Icon(Icons.repeat, color: Colors.grey),
-                        Icon(Icons.repeat, color: Colors.orange),
-                        Icon(Icons.repeat_one, color: Colors.orange),
-                      ];
-                      const cycleModes = [
-                        LoopMode.off,
-                        LoopMode.all,
-                        LoopMode.one,
-                      ];
-                      final index = cycleModes.indexOf(loopMode);
-                      return IconButton(
-                        icon: icons[index],
-                        onPressed: () {
-                          _player.setLoopMode(cycleModes[
-                              (cycleModes.indexOf(loopMode) + 1) %
-                                  cycleModes.length]);
-                        },
-                      );
-                    },
-                  ),
-                  Expanded(
-                    child: Text(
-                      "Playlist",
-                      style: Theme.of(context).textTheme.headline6,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  StreamBuilder<bool>(
-                    stream: _player.shuffleModeEnabledStream,
-                    builder: (context, snapshot) {
-                      final shuffleModeEnabled = snapshot.data ?? false;
-                      return IconButton(
-                        icon: shuffleModeEnabled
-                            ? const Icon(Icons.shuffle, color: Colors.orange)
-                            : const Icon(Icons.shuffle, color: Colors.grey),
-                        onPressed: () async {
-                          final enable = !shuffleModeEnabled;
-                          if (enable) {
-                            await _player.shuffle();
-                          }
-                          await _player.setShuffleModeEnabled(enable);
-                        },
-                      );
-                    },
-                  ),
-                ],
-              ),
-              SizedBox(
-                height: 240.0,
-                child: StreamBuilder<SequenceState?>(
-                  stream: _player.sequenceStateStream,
-                  builder: (context, snapshot) {
-                    final state = snapshot.data;
-                    final sequence = state?.sequence ?? [];
-                    return ReorderableListView(
-                      onReorder: (int oldIndex, int newIndex) {
-                        if (oldIndex < newIndex) newIndex--;
-                        _playlist.move(oldIndex, newIndex);
-                      },
-                      children: [
-                        for (var i = 0; i < sequence.length; i++)
-                          Dismissible(
-                            key: ValueKey(sequence[i]),
-                            background: Container(
-                              color: Colors.redAccent,
-                              alignment: Alignment.centerRight,
-                              child: const Padding(
-                                padding: EdgeInsets.only(right: 8.0),
-                                child: Icon(Icons.delete, color: Colors.white),
-                              ),
-                            ),
-                            onDismissed: (dismissDirection) {
-                              _playlist.removeAt(i);
-                            },
-                            child: Material(
-                              color: i == state!.currentIndex
-                                  ? Colors.grey.shade300
-                                  : null,
-                              child: ListTile(
-                                title: Text(sequence[i].tag.title as String),
-                                onTap: () {
-                                  _player.seek(Duration.zero, index: i);
-                                },
-                              ),
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+              child: Text('Drawer Header'),
+            ),
+            ListTile(
+              title: const Text('Item 1'),
+              onTap: () {
+                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => YoutubeList()));
+              },
+            ),
+            ListTile(
+              title: const Text('Item 2'),
+              onTap: () {
+                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YoutubeVideoPage()));
+              },
+            ),
+          ],
         ),
-        floatingActionButton: FloatingActionButton(
-          child: const Icon(Icons.add),
-          onPressed: () {
-            _playlist.add(AudioSource.uri(
-              Uri.parse("asset:///audio/nature.mp3"),
-              tag: MediaItem(
-                id: '${_nextMediaId++}',
-                album: "Public Domain",
-                title: "Nature Sounds ${++_addedCount}",
-                artUri: Uri.parse(
-                    "https://media.wnyc.org/i/1400/1400/l/80/1/ScienceFriday_WNYCStudios_1400.jpg"),
-              ),
-            ));
-          },
+      ),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [_buildBody()],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    return AnimatedBuilder(
+      animation:
+          CurvedAnimation(parent: _controller, curve: Curves.fastOutSlowIn),
+      builder: (context, child) {
+        double newValue = 0.0;
+        if (_controller.value > 0.95) {
+          newValue = 0.95;
+        } else {
+          newValue = _controller.value;
+        }
+        return Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            _buildContainer(150 * newValue),
+            _buildContainer(200 * newValue),
+            _buildContainer(250 * newValue),
+            _buildContainer(300 * newValue),
+            _buildContainer(350 * newValue),
+            Align(
+              child: ControlButtons(_player),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildContainer(double radius) {
+    return Container(
+      width: radius,
+      height: radius,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFF011925).withOpacity(1 - _controller.value),
       ),
     );
   }
@@ -263,27 +196,6 @@ class ControlButtons extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          icon: const Icon(Icons.volume_up),
-          onPressed: () {
-            showSliderDialog(
-              context: context,
-              title: "Adjust volume",
-              divisions: 10,
-              min: 0.0,
-              max: 1.0,
-              stream: player.volumeStream,
-              onChanged: player.setVolume,
-            );
-          },
-        ),
-        StreamBuilder<SequenceState?>(
-          stream: player.sequenceStateStream,
-          builder: (context, snapshot) => IconButton(
-            icon: const Icon(Icons.skip_previous),
-            onPressed: player.hasPrevious ? player.seekToPrevious : null,
-          ),
-        ),
         StreamBuilder<PlayerState>(
           stream: player.playerStateStream,
           builder: (context, snapshot) {
@@ -300,13 +212,16 @@ class ControlButtons extends StatelessWidget {
               );
             } else if (playing != true) {
               return IconButton(
-                icon: const Icon(Icons.play_arrow),
+                icon: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                ),
                 iconSize: 64.0,
                 onPressed: player.play,
               );
             } else if (processingState != ProcessingState.completed) {
               return IconButton(
-                icon: const Icon(Icons.pause),
+                icon: const Icon(Icons.pause, color: Colors.white),
                 iconSize: 64.0,
                 onPressed: player.pause,
               );
@@ -319,31 +234,6 @@ class ControlButtons extends StatelessWidget {
               );
             }
           },
-        ),
-        StreamBuilder<SequenceState?>(
-          stream: player.sequenceStateStream,
-          builder: (context, snapshot) => IconButton(
-            icon: const Icon(Icons.skip_next),
-            onPressed: player.hasNext ? player.seekToNext : null,
-          ),
-        ),
-        StreamBuilder<double>(
-          stream: player.speedStream,
-          builder: (context, snapshot) => IconButton(
-            icon: Text("${snapshot.data?.toStringAsFixed(1)}x",
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-            onPressed: () {
-              showSliderDialog(
-                context: context,
-                title: "Adjust speed",
-                divisions: 10,
-                min: 0.5,
-                max: 1.5,
-                stream: player.speedStream,
-                onChanged: player.setSpeed,
-              );
-            },
-          ),
         ),
       ],
     );
